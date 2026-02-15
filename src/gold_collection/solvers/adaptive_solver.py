@@ -59,12 +59,14 @@ def _choose_regime(problem: Problem, oracle: LandmarkOracle) -> Regime:
 
 
 def _get_split_window(n: int, tour_len: int) -> int:
-    """Determine DP window size based on problem size."""
+    """Determine DP window size based on problem size (avoids O(n*window) blow-up)."""
     if n <= 500:
         return tour_len
-    if n <= 2000:
+    if n <= 800:
         return min(800, tour_len)
-    return min(500, tour_len)
+    if n <= 2000:
+        return min(400, tour_len)  # cap for large n so split stays fast
+    return min(300, tour_len)
 
 
 def solve_return_solution(

@@ -96,6 +96,10 @@ def split_tour(
     return Solution(trips=trips, unserved={})
 
 
+# Threshold above which we use fast O(n^2) construction instead of O(n^3) nearest-insertion
+_TOUR_FAST_N_THRESHOLD = 400
+
+
 def construct_tour_regime_t(
     problem: Problem,
     oracle: LandmarkOracle,
@@ -105,7 +109,8 @@ def construct_tour_regime_t(
     """
     Construct a giant tour for Regime T (sub-linear costs).
 
-    Uses nearest insertion followed by 2-opt improvement.
+    For n <= 500: nearest insertion + 2-opt (better quality, O(n^3)).
+    For n > 500: nearest neighbor + limited 2-opt (faster, O(n^2)).
 
     Args:
         problem: The problem instance
@@ -128,8 +133,12 @@ def construct_tour_regime_t(
     def dist(u: int, v: int) -> float:
         return oracle.a_hat(u, v)
 
-    tour = _nearest_insertion(nodes, dist, rng)
-    tour = _two_opt_tour(tour, dist)
+    if n > _TOUR_FAST_N_THRESHOLD:
+        tour = _nn_order(problem, oracle, nodes, rng)
+        tour = _two_opt_tour_limited(tour, dist, max_rounds=2)
+    else:
+        tour = _nearest_insertion(nodes, dist, rng)
+        tour = _two_opt_tour(tour, dist)
     return tour
 
 
@@ -203,6 +212,35 @@ def _two_opt_tour(tour: List[int], dist: callable) -> List[int]:
             if improved:
                 break
 
+    return tour
+
+
+def _two_opt_tour_limited(
+    tour: List[int], dist: callable, max_rounds: int = 2
+) -> List[int]:
+    """2-opt with at most max_rounds improvement rounds (for large n)."""
+    n = len(tour)
+    if n <= 2:
+        return tour
+
+    for _ in range(max_rounds):
+        improved = False
+        for i in range(n - 1):
+            for j in range(i + 2, n + 1):
+                if j == n and i == 0:
+                    continue
+                a, b = tour[i], tour[(i + 1) % n]
+                c, d = tour[(j - 1) % n], tour[j % n]
+                before = dist(a, b) + dist(c, d)
+                after = dist(a, c) + dist(b, d)
+                if after < before - 1e-9:
+                    tour[i + 1 : j] = reversed(tour[i + 1 : j])
+                    improved = True
+                    break
+            if improved:
+                break
+        if not improved:
+            break
     return tour
 
 
